@@ -6,7 +6,7 @@ import sys
 import threading
 import time
 
-from . import __version__, paths
+from . import __version__, crash, paths
 from .config import Config
 from .dictionary import DictionaryStore
 from .engine import Engine
@@ -62,29 +62,34 @@ def run():
         print("AutoC's background mode only runs on Windows. Try:  autoc correct \"teh text\"")
         return 1
     if not single_instance():
-        print("AutoC is already running.")
+        crash.log("start requested but AutoC is already running")
+        try:
+            ctypes.windll.user32.MessageBoxW(None, "AutoC is already running (blue icon near the clock).\n"
+                                             "F12 = autocorrect on/off.", "AutoC", 0x40)
+        except Exception:
+            pass
         return 0
     import pystray
     from .winhook import KeyboardHook, Win
 
+    crash.log(f"AutoC {__version__} starting (frozen={getattr(sys, 'frozen', False)})")
     cfg = Config.load()
     store = DictionaryStore(background=True)
     engine = Engine(cfg, store)
     try:   # every language of every installed keyboard layout
-        if cfg.auto_add_keyboard_languages:
-            from .dictionary import available_languages
-            have = available_languages()
-            for code in Win().installed_layout_languages():
-                if code in have and code not in engine.langs:
-                    engine.langs.append(code)
-    except Exception:
-        pass
+        from .dictionary import available_languages
+        have = available_languages()
+        for code in Win().installed_layout_languages():
+            if code in have:
+                engine.add_language(code)
+        crash.log(f"languages: {engine.langs}")
+    except Exception as exc:
+        crash.log(f"could not read keyboard layouts: {exc}")
     icon = pystray.Icon("AutoC", make_icon(cfg.enabled), f"AutoC {__version__}")
-    hook = None
 
     def on_toggle(on):
         icon.icon = make_icon(on)
-        icon.title = "AutoC: ON" if on else "AutoC: OFF (press the hotkey to resume)"
+        crash.log("autocorrect " + ("ON" if on else "OFF"))
         try:
             ctypes.windll.user32.MessageBeep(0x40 if on else 0x30)
             icon.notify("Autocorrect is ON" if on else "Autocorrect is OFF", "AutoC")
@@ -93,11 +98,24 @@ def run():
 
     hook = KeyboardHook(engine, cfg, on_toggle)
 
-    def watch_config():
+    def hook_main():
+        try:
+            hook.run()
+        except Exception as exc:
+            crash.report(exc, "AutoC could not start its keyboard hook")
+
+    def background():
         path = paths.user_dir() / "config.json"
         last = path.stat().st_mtime if path.exists() else 0
         while True:
             time.sleep(2)
+            try:   # live status in the tray tooltip
+                state = "ON" if hook.cfg.enabled else "OFF"
+                ready = "ready" if engine.ready() else "loading dictionaries"
+                icon.title = (f"AutoC {state} - {ready} - hook {'active' if hook.hook_ok else 'NOT active'}"
+                              f" - {hook.keys} keys, {hook.fixes} fixes")
+            except Exception:
+                pass
             try:
                 m = path.stat().st_mtime
             except OSError:
@@ -108,24 +126,39 @@ def run():
                 new.enabled = hook.cfg.enabled
                 store.clear()
                 hook.apply_config(new)
-                for c in engine.langs:
-                    store.get(c)
+                crash.log(f"settings reloaded, languages: {engine.langs}")
 
-    threading.Thread(target=hook.run, daemon=True).start()
-    threading.Thread(target=watch_config, daemon=True).start()
+    threading.Thread(target=hook_main, daemon=True).start()
+    threading.Thread(target=background, daemon=True).start()
     for c in engine.langs:
         store.get(c)
 
     def quit_(icon_, item):
+        crash.log("quit")
         hook.stop()
         icon_.stop()
+
+    def diagnose(icon_, item):
+        out = paths.user_dir() / "diagnose.txt"
+        subprocess.run(command_line("doctor", "--out", str(out)), creationflags=0x08000000)
+        os.startfile(out)
+
+    def setup(icon_):
+        icon_.visible = True
+        crash.log("tray icon visible")
+        try:
+            icon_.notify("AutoC is running. F12 = autocorrect on/off. Right-click this icon for settings.", "AutoC")
+        except Exception:
+            pass
 
     icon.menu = pystray.Menu(
         pystray.MenuItem(lambda i: f"Autocorrect {'ON' if hook.cfg.enabled else 'OFF'}  ({hook.cfg.toggle_hotkey.upper()})",
                          lambda i, it: hook.toggle(), default=True),
         pystray.MenuItem("Settings...", lambda i, it: subprocess.Popen(command_line("settings"))),
+        pystray.MenuItem("Check that everything works...", diagnose),
+        pystray.MenuItem("Open log", lambda i, it: os.startfile(paths.user_dir() / "autoc.log")),
         pystray.MenuItem("Open settings folder", lambda i, it: os.startfile(paths.user_dir())),
         pystray.MenuItem("Quit AutoC", quit_),
     )
-    icon.run()
+    icon.run(setup)
     return 0

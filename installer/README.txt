@@ -14,6 +14,18 @@ USE
    corrected later (good for names like Koleku or deliberate typos).
  * Backspace right after a fix = undo, and AutoC never touches that word again.
 
+IT DOES NOTHING? (very common: the antivirus blocks new unsigned programs)
+ 1. Double-click  Diagnose.bat  -> it creates AutoC-diagnose.txt on your Desktop and shows
+    whether files were removed, whether your antivirus/Smart App Control blocked AutoC, and
+    what AutoC's log says. (Tray icon -> "Check that everything works..." does the same.)
+ 2. Add the folder  %LOCALAPPDATA%\Programs\AutoC  to your antivirus exclusions
+    (Windows Security -> Virus & threat protection -> Manage settings -> Exclusions),
+    restore AutoC from the antivirus quarantine, run Install.bat again.
+ 3. Or avoid the .exe completely: double-click  Run-with-Python.bat  (installs Python if
+    needed and runs AutoC through it - Microsoft-signed, rarely blocked).
+ AutoC is intentionally NOT active in terminals (cmd, PowerShell, Windows Terminal) and in
+ password managers. Test it in Notepad, Word, a browser or a chat.
+
 TERMINAL (open a NEW terminal after installing)
    autoc-cli correct "i dont know wich langauge"
    autoc-cli languages

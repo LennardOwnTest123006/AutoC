@@ -98,3 +98,13 @@ def test_language_autodetect_mixed(make_engine):
 def test_disabled_passthrough(make_engine):
     e = make_engine(enabled=False)
     assert type_text(e, "teh wrogn. hello ") == "teh wrogn. hello "
+
+
+def test_keyboard_languages_survive_config_reload(make_engine):
+    e = make_engine()
+    e.cfg.auto_add_keyboard_languages = True
+    e.add_language("de")
+    assert "de" in e.langs
+    e.set_config(e.cfg)                    # used to wipe the keyboard languages
+    assert "de" in e.langs
+    assert type_text(e, "das ist ein Hauss ") == "Das ist ein Haus "

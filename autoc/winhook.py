@@ -9,7 +9,7 @@ import sys
 import threading
 from ctypes import wintypes
 
-from . import languages
+from . import crash, languages
 
 WH_KEYBOARD_LL, WH_MOUSE_LL = 13, 14
 WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP = 0x100, 0x101, 0x104, 0x105
@@ -190,7 +190,9 @@ class KeyboardHook:
         self.engine, self.cfg, self.on_toggle = engine, config, on_toggle
         self.lock = threading.Lock()
         self.win = None
-        self.accept_injected = False   # tests only: treat SendInput keys as typing
+        self.accept_injected = bool(os.environ.get("AUTOC_ACCEPT_INJECTED"))   # tests only
+        self.keys = self.fixes = self.errors = 0
+        self.hook_ok = False
         self.thread_id = None
         self._swallowed = set()
         self._fg = (None, "", False)   # hwnd, layout, excluded
@@ -221,8 +223,11 @@ class KeyboardHook:
         try:
             if nCode == 0 and self._handle(wParam, KBDLLHOOKSTRUCT.from_address(lParam)):
                 return 1
-        except Exception:      # never let an error break the user's typing
-            pass
+        except Exception:      # never let an error break the user's typing - but do log it
+            self.errors += 1
+            if self.errors <= 5:
+                import traceback
+                crash.log("key handler error: " + traceback.format_exc())
         return self.win.user32.CallNextHookEx(None, nCode, wParam, lParam)
 
     def _mouse_proc(self, nCode, wParam, lParam):
@@ -268,6 +273,9 @@ class KeyboardHook:
         w, eng = self.win, self.engine
         if vk in MODIFIER_VKS:
             return False
+        self.keys += 1
+        if self.keys == 1:
+            crash.log("first key received by the hook - keyboard hook works")
         a = w.user32.GetAsyncKeyState
         ctrl, alt = bool(a(VK_CONTROL) & 0x8000), bool(a(VK_MENU) & 0x8000)
         if (ctrl or alt or a(0x5B) & 0x8000 or a(0x5C) & 0x8000) and not (ctrl and alt):  # shortcut, not AltGr
@@ -294,6 +302,7 @@ class KeyboardHook:
         if act is None:
             return False
         w.send(act.backspaces, act.text, act.then)
+        self.fixes += 1
         self._swallowed.add(vk)
         return True
 
@@ -309,6 +318,8 @@ class KeyboardHook:
         h2 = w.user32.SetWindowsHookExW(WH_MOUSE_LL, self._ms_cb, mod, 0)
         if not h1:
             raise OSError(f"could not install keyboard hook (error {ctypes.get_last_error()})")
+        self.hook_ok = True
+        crash.log("keyboard hook installed")
         msg = wintypes.MSG()
         while w.user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
             pass

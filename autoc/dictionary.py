@@ -1,5 +1,6 @@
 """Word lists + one-edit candidate search (works for any alphabet)."""
 import gzip
+import math
 import pathlib
 import threading
 
@@ -7,6 +8,7 @@ from . import paths
 from .textutil import lower, norm_apostrophe
 
 _LETTERS_FROM_TOP = 5000
+_KIND_PENALTY = {0: 0.0, 1: 1.0, 2: 1.5, 3: 1.5}   # swapped, wrong key, missing, extra
 
 
 class Dictionary:
@@ -27,23 +29,31 @@ class Dictionary:
         return len(self.rank)
 
     def candidates(self, word: str):
-        """Known words within one edit (delete/insert/replace/transpose), best first."""
+        """Known words within one edit, best first.
+
+        Ranking: same first letter, then the kind of typo (swapped neighbours are the most
+        common mistake, then a wrong key, then a missing letter, then an extra letter),
+        then word frequency."""
         rank, alpha = self.rank, self.alphabet
-        found = set()
+        found = {}                       # word -> typo kind (lower = more likely)
+
+        def add(w, kind):
+            if w in rank and w != word and found.get(w, 9) > kind:
+                found[w] = kind
         for i in range(len(word) + 1):
             a, b = word[:i], word[i:]
-            if b and a + b[1:] in rank:
-                found.add(a + b[1:])
-            if len(b) > 1 and a + b[1] + b[0] + b[2:] in rank:
-                found.add(a + b[1] + b[0] + b[2:])
+            if len(b) > 1:
+                add(a + b[1] + b[0] + b[2:], 0)       # swapped
             for c in alpha:
-                if b and a + c + b[1:] in rank:
-                    found.add(a + c + b[1:])
-                if a + c + b in rank:
-                    found.add(a + c + b)
-        found.discard(word)
-        # a typo rarely changes the first letter: prefer candidates keeping it
-        return sorted(found, key=lambda w: (w[:1] != word[:1], rank[w]))
+                if b:
+                    add(a + c + b[1:], 1)             # wrong key
+                add(a + c + b, 2)                     # missing letter
+            if b:
+                add(a + b[1:], 3)                     # extra letter
+        # score = log(rank) + typo-kind penalty: a frequent word one extra/missing letter away
+        # beats a rare word one wrong key away, but a swapped pair beats both
+        return sorted(found, key=lambda w: (w[:1] != word[:1],
+                                            math.log(rank[w] + 10) + _KIND_PENALTY[found[w]]))
 
 
 def read_wordlist(path: pathlib.Path):

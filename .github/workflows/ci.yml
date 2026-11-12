@@ -38,12 +38,11 @@ jobs:
         shell: pwsh
         timeout-minutes: 3
         run: |
-          New-Item -ItemType Directory pkg | Out-Null
-          Copy-Item dist\AutoC pkg\AutoC -Recurse
-          Copy-Item installer\* pkg\
-          Compress-Archive -Path pkg\* -DestinationPath AutoC-Windows.zip
+          ./tools/make_zip.ps1
           Expand-Archive AutoC-Windows.zip -DestinationPath unzipped
-          Get-ChildItem unzipped | Format-Table Name
+          foreach ($f in 'Install.bat','Uninstall.bat','Diagnose.bat','Diagnose.ps1','Run-with-Python.bat','README.txt','AutoC\AutoC.exe','AutoC\autoc-cli.exe','source\autoc\cli.py','source\pyproject.toml') {
+            if (-not (Test-Path "unzipped\$f")) { throw "ZIP is missing $f" }
+          }
       - name: Install.bat
         shell: cmd
         timeout-minutes: 3
@@ -87,6 +86,48 @@ jobs:
           if ($proc.HasExited) { throw "AutoC.exe exited with $($proc.ExitCode)" }
           Write-Host "AutoC.exe is running (pid $($proc.Id))"
           Stop-Process $proc -Force
+      - name: Real app test - installed AutoC.exe runs in the background and corrects real typing
+        shell: pwsh
+        timeout-minutes: 4
+        env:
+          AUTOC_NO_GUI: "1"
+          AUTOC_ACCEPT_INJECTED: "1"
+        run: |
+          $dir = "$PWD\installed dir"
+          $app = Start-Process "$dir\AutoC.exe" -ArgumentList 'run' -PassThru
+          Start-Sleep -Seconds 12
+          if ($app.HasExited) { throw "AutoC.exe run exited with $($app.ExitCode)" }
+          $p = Start-Process "$dir\autoc-cli.exe" -ArgumentList 'selftest','--e2e','--external','--out','e2e-real.txt' -Wait -PassThru
+          $report = Get-Content e2e-real.txt -Raw
+          Write-Host $report
+          $log = Join-Path $env:APPDATA 'AutoC\autoc.log'
+          Write-Host "--- autoc.log"; Get-Content $log -Tail 30
+          Stop-Process $app -Force
+          if ($p.ExitCode -ne 0) { throw "real-app typing test failed" }
+      - name: Diagnose.ps1 works
+        shell: pwsh
+        timeout-minutes: 3
+        env:
+          AUTOC_NO_PAUSE: "1"
+        run: |
+          $env:AUTOC_INSTALL_DIR = "$PWD\installed dir"
+          powershell -NoProfile -ExecutionPolicy Bypass -File unzipped\Diagnose.ps1
+          $f = Join-Path ([Environment]::GetFolderPath('Desktop')) 'AutoC-diagnose.txt'
+          if (-not (Test-Path $f)) { throw "no diagnose report" }
+          Get-Content $f
+          if (-not (Select-String -Path $f -Pattern 'autoc-cli.exe exit code: 0' -Quiet)) { throw "diagnose could not run the program" }
+      - name: Run-with-Python.bat (no .exe) installs and works
+        shell: cmd
+        timeout-minutes: 6
+        run: |
+          call unzipped\Run-with-Python.bat
+          if errorlevel 1 exit /b 1
+          python -m autoc correct "i dont know wich langauge"
+          python -m autoc selftest
+        env:
+          AUTOC_NO_PAUSE: "1"
+          AUTOC_NO_START: "1"
+          AUTOC_NO_GUI: "1"
       - name: Uninstall.bat
         shell: cmd
         timeout-minutes: 3

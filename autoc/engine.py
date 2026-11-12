@@ -22,6 +22,7 @@ ABBREVIATIONS = {"mr", "mrs", "ms", "dr", "prof", "sr", "jr", "st", "vs", "etc",
                  "ltd", "no", "fig", "eg", "ie", "z", "d", "bzw", "ca", "usw", "u", "s",
                  "nr", "tel", "approx", "dept", "est", "min", "max"}
 SHORT_FREQUENT_RANK = 3000
+FOREIGN_TRUST_RANK = 25000     # a word from another language only counts as known if it is common there
 CAPITALISED_NOUN_LANGS = {"de"}   # nouns are capitalised: mid-sentence Title Case is not a name
 
 
@@ -39,6 +40,7 @@ class Engine:
         self.recent = deque(maxlen=24)   # per-word language votes
         self.undone = []                  # words the user rejected (to persist)
         self._repl_cache = {}
+        self.extra_langs = []             # languages of the installed keyboards (survive set_config)
         self.set_config(config)
         self.reset(sentence_start=True)
 
@@ -47,13 +49,18 @@ class Engine:
         self.cfg = config
         self.user_words = {lower(w) for w in config.user_words}
         self.custom = {k.lower(): v for k, v in config.custom_replacements.items()}
-        self.langs = list(dict.fromkeys(config.languages or ["en"]))
+        extra = self.extra_langs if config.auto_add_keyboard_languages else []
+        self.langs = list(dict.fromkeys((config.languages or ["en"]) + extra))
+
+    def add_language(self, code: str):
+        if code and code in dictmod.available_languages() and code not in self.extra_langs:
+            self.extra_langs.append(code)
+            if self.cfg.auto_add_keyboard_languages and code not in self.langs:
+                self.langs.append(code)
 
     def set_layout_language(self, code: str):
         self.layout_lang = code or ""
-        if code and self.cfg.auto_add_keyboard_languages and code not in self.langs \
-                and code in dictmod.available_languages():
-            self.langs.append(code)
+        self.add_language(code)
 
     def ready(self) -> bool:
         for c in self.langs:
@@ -199,7 +206,19 @@ class Engine:
         return max(scores, key=lambda c: (scores[c], c == primary, c == self.layout_lang))
 
     def _known(self, word_lc):
-        return [c for c in self.langs if (d := self.store.get(c)) and word_lc in d]
+        """{language: rank} for every enabled language whose word list contains the word."""
+        out = {}
+        for c in self.langs:
+            d = self.store.get(c)
+            if d and word_lc in d:
+                out[c] = d.rank[word_lc]
+        return out
+
+    def _is_known(self, found, lang):
+        """Known in the active language, or common (not just a stray entry) in another one."""
+        if lang in found:
+            return True
+        return any(r < FOREIGN_TRUST_RANK for r in found.values())
 
     def _fix(self, original: str) -> Optional[str]:
         cfg = self.cfg
@@ -212,9 +231,12 @@ class Engine:
             return None
         lang = self._active_lang()
         word_lc = lower(norm_apostrophe(core), lang)
-        known_in = self._known(word_lc)
-        if known_in and len(word_lc) >= 3:
-            self.recent.append({c: 1.0 / len(known_in) for c in known_in})
+        found = self._known(word_lc)
+        if found and len(word_lc) >= 3:     # evidence for the language: weighted by how common the word is there
+            w = {c: 1.0 / (r + 50) for c, r in found.items()}
+            tot = sum(w.values())
+            self.recent.append({c: v / tot for c, v in w.items()})
+        known_in = self._is_known(found, lang)
         new = core
 
         rep = None

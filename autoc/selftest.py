@@ -56,7 +56,7 @@ def _send_key(user32, vk, up=False):
     user32.SendInput(1, ctypes.byref(i), ctypes.sizeof(INPUT))
 
 
-def _e2e(lines):
+def _e2e(lines, external=False):
     """Real keystrokes -> real hook -> real text box."""
     import ctypes
     import tkinter as tk
@@ -88,13 +88,15 @@ def _e2e(lines):
             root.update()
             time.sleep(0.05)
 
-    cfg = Config(auto_add_keyboard_languages=False, languages=["en"], excluded_apps=[])
-    eng = Engine(cfg)
-    eng.preload()
-    hook = wh.KeyboardHook(eng, cfg)
-    hook.accept_injected = True
-    t = threading.Thread(target=hook.run, daemon=True)
-    t.start()
+    hook = t = None
+    if not external:               # normal: run our own hook; external: a real running AutoC does it
+        cfg = Config(auto_add_keyboard_languages=False, languages=["en"], excluded_apps=[])
+        eng = Engine(cfg)
+        eng.preload()
+        hook = wh.KeyboardHook(eng, cfg)
+        hook.accept_injected = True
+        t = threading.Thread(target=hook.run, daemon=True)
+        t.start()
     time.sleep(1.0)
 
     def pump(sec=0.05):
@@ -124,8 +126,9 @@ def _e2e(lines):
     tap(0x08)                     # Backspace right after a fix -> undo
     pump(0.3)
     got = box.get("1.0", "end-1c")
-    hook.stop()
-    t.join(3)
+    if hook:
+        hook.stop()
+        t.join(3)
     root.destroy()
     want = "the quick brown fox hsllo wrogn wrong recieve"
     ok = got == want
@@ -135,14 +138,14 @@ def _e2e(lines):
     return ok
 
 
-def run(e2e: bool = False):
+def run(e2e: bool = False, external: bool = False):
     lines = [f"AutoC {__version__} selftest on {sys.platform}"]
     ok = _engine_checks(lines)
     if sys.platform == "win32":
         try:
             ok = _hook_checks(lines) and ok
             if e2e:
-                ok = _e2e(lines) and ok
+                ok = _e2e(lines, external) and ok
         except Exception as exc:
             import traceback
             lines.append("FAIL: " + "".join(traceback.format_exception(exc)))

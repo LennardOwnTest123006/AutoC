@@ -47,9 +47,24 @@ def cmd_languages(_):
         _emit(f"{code:4} {languages.name(code)}")
 
 
+def cmd_doctor(args):
+    from . import paths, selftest
+    ok, report = selftest.run(e2e=False)
+    lines = [report, "", f"settings folder: {paths.user_dir()}",
+             f"executable: {sys.executable} (frozen={getattr(sys, 'frozen', False)})"]
+    log = paths.user_dir() / "autoc.log"
+    lines.append("--- last log lines:")
+    try:
+        lines += log.read_text(encoding="utf-8").splitlines()[-25:]
+    except OSError:
+        lines.append("(no log yet: AutoC has never started on this PC)")
+    _emit("\n".join(lines), args.out)
+    return 0 if ok else 1
+
+
 def cmd_selftest(args):
     from . import selftest
-    ok, report = selftest.run(e2e=args.e2e)
+    ok, report = selftest.run(e2e=args.e2e, external=args.external)
     _emit(report, args.out)
     return 0 if ok else 1
 
@@ -93,7 +108,11 @@ def _main(argv=None):
     c.add_argument("--out", help="write the result to this file instead of the terminal")
     t = sub.add_parser("selftest", help="check that AutoC works on this PC")
     t.add_argument("--e2e", action="store_true", help="also type real keys into a test window")
+    t.add_argument("--external", action="store_true",
+                   help="with --e2e: type into a test window but let an already running AutoC do the correcting")
     t.add_argument("--out", help="write the report to this file")
+    dd = sub.add_parser("doctor", help="check the installation and show the log")
+    dd.add_argument("--out", help="write the report to this file")
     sub.add_parser("languages", help="list installed dictionaries")
     d = sub.add_parser("dict-add", help="add a dictionary (word list or Hunspell .dic)")
     d.add_argument("code")
@@ -111,5 +130,5 @@ def _main(argv=None):
         from . import settings_gui
         return settings_gui.main()
     r = {"correct": cmd_correct, "languages": cmd_languages, "dict-add": cmd_dict_add,
-         "autostart": cmd_autostart, "selftest": cmd_selftest}[cmd](args)
+         "autostart": cmd_autostart, "selftest": cmd_selftest, "doctor": cmd_doctor}[cmd](args)
     return r or 0
