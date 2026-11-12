@@ -80,7 +80,7 @@ def test_toggle_midword_does_not_fix_old_part(make_engine):
 
 def test_other_languages(make_engine):
     e = make_engine(languages=["de", "en"], primary_language="de")
-    assert type_text(e, "das ist ein Hauss und ich gehe nach hause ") == "Das ist ein Haus und ich gehe nach hause "
+    assert type_text(e, "das ist ein Hauss und ich gehe nach hause ") == "Das ist ein Haus und ich gehe nach Hause "
     e = make_engine(languages=["es"], primary_language="es")
     assert type_text(e, "hola. como estas ") == "Hola. Como estas "
     e = make_engine(languages=["ru"], primary_language="ru")
@@ -108,3 +108,51 @@ def test_keyboard_languages_survive_config_reload(make_engine):
     e.set_config(e.cfg)                    # used to wipe the keyboard languages
     assert "de" in e.langs
     assert type_text(e, "das ist ein Hauss ") == "Das ist ein Haus "
+
+
+def test_german_noun_capitalisation(make_engine):
+    e = make_engine(languages=["de"], primary_language="de")
+    out = type_text(e, "ich habe das wetter gesehen. der hund ist rot und das auto ist blau ")
+    assert out == "Ich habe das Wetter gesehen. Der Hund ist rot und das Auto ist blau "
+
+
+def test_german_ambiguous_words_left_alone(make_engine):
+    e = make_engine(languages=["de"], primary_language="de")
+    # colours/adjectives, interjections and verbs that look like nouns stay lowercase
+    out = type_text(e, "danke ich suche meinen bus und ich warte ")
+    assert out == "Danke ich suche meinen Bus und ich warte "
+    e = make_engine(languages=["de"], primary_language="de")
+    assert type_text(e, "es ist gut und rot ") == "Es ist gut und rot "
+
+
+def test_german_nominalised_verbs_after_zum_beim(make_engine):
+    e = make_engine(languages=["de"], primary_language="de")
+    assert type_text(e, "wir gehen zum essen und beim kochen hilft sie ") == \
+        "Wir gehen zum Essen und beim Kochen hilft sie "
+
+
+def test_german_wrong_capitals_lowercased_but_not_after_colon(make_engine):
+    e = make_engine(languages=["de"], primary_language="de")
+    assert type_text(e, "ich gehe Nach Hause und Dann schlafe ich ") == "Ich gehe nach Hause und dann schlafe ich "
+    e = make_engine(languages=["de"], primary_language="de")
+    assert type_text(e, "er sagte: Und dann ") == "Er sagte: Und dann "
+
+
+def test_german_polite_sie_and_names_untouched(make_engine):
+    e = make_engine(languages=["de"], primary_language="de")
+    assert type_text(e, "hat Sie gefragt und Koleku kam ") == "Hat Sie gefragt und Koleku kam "
+
+
+def test_german_casing_can_be_switched_off(make_engine):
+    e = make_engine(languages=["de"], primary_language="de", fix_noun_capitalisation=False)
+    assert type_text(e, "ich sehe das haus ") == "Ich sehe das haus "
+
+
+def test_english_is_not_affected_by_german_rules(make_engine):
+    e = make_engine(languages=["en", "de"], primary_language="en")
+    assert type_text(e, "the house and the dog are here ") == "The house and the dog are here "
+
+
+def test_german_context_survives_before_a_period(make_engine):
+    e = make_engine(languages=["de"], primary_language="de")
+    assert type_text(e, "wir gehen zum essen. ich suche das buch. ") == "Wir gehen zum Essen. Ich suche das Buch. "

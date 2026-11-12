@@ -80,6 +80,29 @@ def available_languages():
     return found
 
 
+class Casing:
+    """Language-specific capitalisation data (currently German noun capitalisation)."""
+
+    def __init__(self, caps, lower, inf):
+        self.caps, self.lower, self.inf = caps, lower, inf
+
+
+def _read_set(path):
+    with gzip.open(path, "rt", encoding="utf-8") as f:
+        return frozenset(f.read().split())
+
+
+def load_casing(code: str):
+    folder = paths.data_dir() / "casing"
+    caps = folder / f"{code}.caps.txt.gz"
+    if not caps.exists():
+        return None
+    lower, inf = folder / f"{code}.lower.txt.gz", folder / f"{code}.inf.txt.gz"
+    return Casing(_read_set(caps),
+                  _read_set(lower) if lower.exists() else frozenset(),
+                  _read_set(inf) if inf.exists() else frozenset())
+
+
 class DictionaryStore:
     """`background=True`: get() never blocks - unloaded dictionaries load in a
     thread and read as None until ready (required inside the keyboard hook)."""
@@ -87,6 +110,7 @@ class DictionaryStore:
     def __init__(self, background: bool = False):
         self.background = background
         self._dicts = {}
+        self._casing = {}
         self._loading = set()
         self._lock = threading.Lock()
 
@@ -100,6 +124,25 @@ class DictionaryStore:
                     threading.Thread(target=self._load, args=(code,), daemon=True).start()
                 return None
         return self._load(code)
+
+    def casing(self, code: str):
+        key = "casing:" + code
+        with self._lock:
+            if code in self._casing:
+                return self._casing[code]
+            if self.background:
+                if key not in self._loading:
+                    self._loading.add(key)
+                    threading.Thread(target=self._load_casing, args=(code,), daemon=True).start()
+                return None
+        return self._load_casing(code)
+
+    def _load_casing(self, code: str):
+        c = load_casing(code)
+        with self._lock:
+            self._casing[code] = c
+            self._loading.discard("casing:" + code)
+        return c
 
     def _load(self, code: str):
         path = available_languages().get(code)
@@ -116,6 +159,7 @@ class DictionaryStore:
     def clear(self):
         with self._lock:
             self._dicts.clear()
+            self._casing.clear()
 
 
 def load_replacements(code: str) -> dict:

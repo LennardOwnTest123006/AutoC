@@ -17,6 +17,8 @@ Urdu, Vietnamese) and you can add **any other language** with your own dictionar
 - **Every keyboard layout**: reads the real characters from the active layout, so
   `ä ñ ç ß й 中…` all work; languages of your installed keyboards are enabled automatically
 - **Language auto-detection**: type English, then German, then French - AutoC follows
+- **German noun capitalisation** (`haus` → `Haus`, `zum essen` → `zum Essen`, `Nach` → `nach`) - data-driven,
+  leaves ambiguous words (`rot`, `essen`, `ich suche`) alone
 - Fixes: spelling, sentence capitalisation (after `. ! ? …` and Enter), `THe`→`The`,
   caps-lock accidents, `i`→`I`, contractions (English), your own replacements
 - **F12 = autocorrect on/off** (configurable). While it is off you can type
@@ -86,4 +88,4 @@ python tools/build_dictionaries.py    # rebuild word lists
 pyinstaller autoc.spec                # build dist/AutoC/ (on Windows)
 ```
 
-MIT licensed. Contributions welcome.
+MIT licensed (code). Word lists: CC BY-SA 4.0, see [NOTICE.md](NOTICE.md). Contributions welcome.

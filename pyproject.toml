@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "autoc"
-version = "0.1.2"
+version = "0.1.3"
 description = "AutoC - open-source background autocorrect for Windows, in every language"
 readme = "README.md"
 license = { text = "MIT" }
@@ -24,7 +24,7 @@ autoc-gui = "autoc.cli:main"
 include = ["autoc*"]
 
 [tool.setuptools.package-data]
-autoc = ["data/dictionaries/*", "data/replacements/*"]
+autoc = ["data/dictionaries/*", "data/replacements/*", "data/casing/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

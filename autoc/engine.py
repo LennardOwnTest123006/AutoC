@@ -22,6 +22,12 @@ ABBREVIATIONS = {"mr", "mrs", "ms", "dr", "prof", "sr", "jr", "st", "vs", "etc",
                  "ltd", "no", "fig", "eg", "ie", "z", "d", "bzw", "ca", "usw", "u", "s",
                  "nr", "tel", "approx", "dept", "est", "min", "max"}
 SHORT_FREQUENT_RANK = 3000
+# German context words (used with the casing data)
+PRONOUNS_BEFORE_VERB = {"ich", "du", "er", "sie", "es", "wir", "ihr", "man", "wer"}
+INF_PREPOSITIONS = {"zum", "beim", "vom", "ins"}            # + infinitive = nominalised verb: zum Essen
+NO_LOWERCASE_AFTER = set(":\"\u201e\u201c\u201d\u00bb\u00ab([\u2018\u2019'")   # a capital may be right here
+SAFE_NOUN_SUFFIXES = ("ung", "heit", "keit", "schaft", "ität", "tion", "ismus", "chen", "lein", "tum")
+NOT_NOUN_ENDINGS = ("en", "t", "te", "st", "ig", "lich", "isch", "bar", "los", "sam", "haft", "end")
 FOREIGN_TRUST_RANK = 25000     # a word from another language only counts as known if it is common there
 CAPITALISED_NOUN_LANGS = {"de"}   # nouns are capitalised: mid-sentence Title Case is not a name
 
@@ -77,6 +83,7 @@ class Engine:
         self.sentence_start = sentence_start
         self.pending_end = False
         self.token_code = False
+        self.prev_boundary = ""  # last punctuation before the current word (":" / quote ...)
         self.deferred = None     # word finished by '.', fix decided when a space follows
         self.last = None         # (original, corrected, boundary) of the latest fix
         self.prev_word = ""
@@ -137,22 +144,27 @@ class Engine:
         word = "".join(self.word)
         self.word = []
         if ch.isspace() and self.deferred:                 # word + '.' + whitespace
-            dword, dot, was_start = self.deferred
+            dword, dot, was_start, ctx_word, ctx_boundary = self.deferred
             self.deferred = None
-            saved, self.sentence_start = self.sentence_start, was_start
+            saved = (self.sentence_start, self.prev_word, self.prev_boundary)
+            self.sentence_start, self.prev_word, self.prev_boundary = was_start, ctx_word, ctx_boundary
             fixed = self._fix(dword)
-            self.sentence_start = saved
+            self.sentence_start, self.prev_word, self.prev_boundary = saved
             if fixed is not None:
                 tail = dot if then else dot + ch
                 action = self._make(len(dword) + len(dot), dword, fixed, tail, then)
         elif word:
             if ch == "." and not self.token_code:
-                self.deferred = (word, ch, self.sentence_start)
+                self.deferred = (word, ch, self.sentence_start, self.prev_word, self.prev_boundary)
             elif ch in TRIGGERS:
                 fixed = self._fix(word)
                 if fixed is not None:
                     action = self._make(len(word), word, fixed, "" if then else ch, then)
+        if word:
+            self.prev_boundary = ""
         self._track(ch, word)
+        if not ch.isspace():
+            self.prev_boundary = ch
         if action is None:
             self.last = None
         return action
@@ -236,7 +248,8 @@ class Engine:
             w = {c: 1.0 / (r + 50) for c, r in found.items()}
             tot = sum(w.values())
             self.recent.append({c: v / tot for c, v in w.items()})
-        known_in = self._is_known(found, lang)
+        cas = self.store.casing(lang)
+        known_in = self._is_known(found, lang) or bool(cas and word_lc in cas.caps)
         new = core
 
         rep = None
@@ -252,11 +265,44 @@ class Engine:
             new = self._case_fixes(core, word_lc, lang)
         elif cfg.fix_spelling and self._eligible(core, lang):
             new = self._spell(core, word_lc, lang) or core
+        if cas and rep is None:
+            new = self._casing_rules(new, lang, cas, known_in)
 
         if cfg.fix_sentence_start and self.sentence_start and new[:1].islower():
             new = upper_first(new, lang)
         new = new + suffix
         return None if new == original else new
+
+    def _casing_rules(self, word, lang, cas, known):
+        """Language-specific capitalisation (German nouns). Conservative: leaves doubtful words alone."""
+        cfg = self.cfg
+        lc = lower(word, lang)
+        if len(lc) < 3:
+            return word
+        prev = lower(self.prev_word, lang)
+        if word == lc:                                         # typed in lowercase
+            if cfg.fix_noun_capitalisation:
+                if prev in INF_PREPOSITIONS and (lc in cas.inf or lc in cas.caps):
+                    return upper_first(word, lang)             # zum essen -> zum Essen
+                if lc in cas.caps and prev not in PRONOUNS_BEFORE_VERB:
+                    return upper_first(word, lang)             # haus -> Haus (but: ich suche)
+                if not known and len(lc) >= 8:                 # unknown compound / derived noun
+                    if lc.endswith(SAFE_NOUN_SUFFIXES) and not lc.endswith(("ungen",)) \
+                            or self._noun_compound(lc, cas):
+                        return upper_first(word, lang)
+        elif word == upper_first(lc, lang) and cfg.fix_wrong_capitals:
+            if lc in cas.lower and not self.sentence_start and self.prev_boundary not in NO_LOWERCASE_AFTER:
+                return lc                                      # ich gehe Nach Hause -> nach
+        return word
+
+    @staticmethod
+    def _noun_compound(lc, cas):
+        if lc.endswith(NOT_NOUN_ENDINGS):
+            return False
+        for k in range(5, len(lc) - 2):                       # tail >= 5 letters, head >= 3 letters
+            if lc[-k:] in cas.caps:
+                return True
+        return False
 
     def _table(self, lang):
         if lang not in self._repl_cache:

@@ -24,6 +24,12 @@ jobs:
           $out = & .\dist\AutoC\autoc-cli.exe correct "i dont know wich langauge, teh brwon fox. THe end"
           Write-Host $out
           if ($LASTEXITCODE -ne 0 -or $out -ne "I don't know which language, the brown fox. The end") { throw "autoc-cli failed: exit=$LASTEXITCODE out=$out" }
+      - name: Packaged exe - German capitalisation and spelling
+        shell: pwsh
+        run: |
+          $out = & .\dist\AutoC\autoc-cli.exe correct --lang de "das haus ist rot und wir gehen zum essen. ich sehe Nach Hause eien tag"
+          Write-Host $out
+          if ($out -ne "Das Haus ist rot und wir gehen zum Essen. Ich sehe nach Hause eine Tag") { throw "German test failed: $out" }
       - name: Packaged GUI exe writes a result (windowed exe, checks exit code and file)
         shell: pwsh
         run: |

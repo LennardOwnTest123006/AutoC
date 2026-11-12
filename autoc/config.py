@@ -22,6 +22,8 @@ class Config:
     fix_two_initial_caps: bool = True      # THe -> The
     fix_caps_lock: bool = True             # hELLO -> Hello
     fix_standalone_i: bool = True          # English: i -> I, im -> I'm ...
+    fix_noun_capitalisation: bool = True   # German: haus -> Haus, zum essen -> zum Essen
+    fix_wrong_capitals: bool = True        # German: ich gehe Nach Hause -> nach (never after : or quotes)
     use_replacements: bool = True          # built-in + custom replacement tables
     undo_with_backspace: bool = True       # Backspace right after a fix restores your text
     excluded_apps: list = field(default_factory=lambda: list(DEFAULT_EXCLUDED))

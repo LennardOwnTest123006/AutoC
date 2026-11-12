@@ -11,6 +11,8 @@ FIXES = [
     ("fix_sentence_start", "Capitalise the first word of a sentence"),
     ("fix_two_initial_caps", "Fix TWo INitial CApitals (THe -> The)"),
     ("fix_caps_lock", "Fix accidental caps lock (hELLO -> Hello)"),
+    ("fix_noun_capitalisation", "German: capitalise nouns (haus -> Haus, zum essen -> zum Essen)"),
+    ("fix_wrong_capitals", "German: lowercase wrongly capitalised words mid-sentence (Nach -> nach)"),
     ("fix_standalone_i", "English: i -> I, im -> I'm, dont -> don't"),
     ("use_replacements", "Use replacement tables (built-in + your own)"),
     ("undo_with_backspace", "Backspace right after a fix restores what I typed (and teaches AutoC)"),
