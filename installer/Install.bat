@@ -33,6 +33,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "$p=[Environment]::GetEnv
 
 echo Starting with Windows ...
 "%DEST%\AutoC.exe" autostart on
+if errorlevel 1 echo  Warning: could not enable "start with Windows". You can enable it later in AutoC settings.
 
 if not defined AUTOC_NO_START (
   echo Starting AutoC ...

@@ -16,7 +16,6 @@ jobs:
       - name: Selftest from source (real keyboard hook + real typing)
         run: python -m autoc selftest --e2e
         timeout-minutes: 3
-        continue-on-error: true
       - name: Build
         run: pyinstaller autoc.spec
       - name: Packaged console exe corrects text (checks the real output)

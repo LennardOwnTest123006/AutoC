@@ -22,20 +22,20 @@ def command_line(*args) -> list:
 
 def set_autostart(on: bool):
     import winreg
-    with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE) as k:
-        if on:
-            exe = sys.executable
-            if not getattr(sys, "frozen", False):          # prefer pythonw: no console window
-                exe = exe.replace("python.exe", "pythonw.exe")
-                cmd = f'"{exe}" -m autoc run'
-            else:
-                cmd = f'"{exe}" run'
+    if on:
+        exe = sys.executable
+        if getattr(sys, "frozen", False):
+            cmd = f'"{exe}" run'
+        else:                                   # prefer pythonw: no console window
+            cmd = f'"{exe.replace("python.exe", "pythonw.exe")}" -m autoc run'
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, RUN_KEY) as k:   # creates it if missing
             winreg.SetValueEx(k, "AutoC", 0, winreg.REG_SZ, cmd)
-        else:
-            try:
+    else:
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE) as k:
                 winreg.DeleteValue(k, "AutoC")
-            except FileNotFoundError:
-                pass
+        except FileNotFoundError:
+            pass
 
 
 def make_icon(enabled: bool):
