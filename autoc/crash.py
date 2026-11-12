@@ -1,4 +1,5 @@
 """Error reporting for the windowed .exe, where a traceback would otherwise vanish."""
+import os
 import sys
 import time
 import traceback
@@ -14,15 +15,15 @@ def log(text: str):
         pass
 
 
-def report(exc: BaseException, title: str = "AutoC error"):
+def report(exc: BaseException, title: str = "AutoC error", gui: bool = True):
     text = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
     log(text)
-    if sys.platform == "win32":
+    if sys.platform == "win32" and gui and not os.environ.get("AUTOC_NO_GUI"):
         try:
             import ctypes
             ctypes.windll.user32.MessageBoxW(
                 None, f"{exc}\n\nDetails: %APPDATA%\\AutoC\\autoc.log", title, 0x10)
         except Exception:
             pass
-    else:
+    elif sys.stderr is not None:
         sys.stderr.write(text)

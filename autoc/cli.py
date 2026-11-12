@@ -69,13 +69,15 @@ def cmd_autostart(args):
 
 
 def main(argv=None):
+    argv = sys.argv[1:] if argv is None else argv
+    interactive = not argv or argv[0] in ("run", "settings")
     try:
         return _main(argv)
     except SystemExit:
         raise
     except Exception as exc:     # windowed .exe: show + log instead of silently dying
         from . import crash
-        crash.report(exc)
+        crash.report(exc, gui=interactive)
         return 1
 
 

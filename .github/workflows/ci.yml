@@ -3,6 +3,9 @@ on: [push, pull_request]
 jobs:
   windows:
     runs-on: windows-latest
+    timeout-minutes: 25
+    env:
+      AUTOC_NO_GUI: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -12,6 +15,7 @@ jobs:
         run: python -m pytest -q
       - name: Selftest from source (real keyboard hook + real typing)
         run: python -m autoc selftest --e2e
+        timeout-minutes: 3
         continue-on-error: true
       - name: Build
         run: pyinstaller autoc.spec
@@ -31,34 +35,68 @@ jobs:
           if ($t -ne "The quick brown fox") { throw "AutoC.exe wrong output: $t" }
       - name: Packaged selftest (hook + SendInput)
         run: .\dist\AutoC\autoc-cli.exe selftest
-      - name: Build ZIP, run Install.bat, check shortcut, start AutoC
+      - name: Build ZIP
         shell: pwsh
+        timeout-minutes: 3
         run: |
           New-Item -ItemType Directory pkg | Out-Null
           Copy-Item dist\AutoC pkg\AutoC -Recurse
           Copy-Item installer\* pkg\
           Compress-Archive -Path pkg\* -DestinationPath AutoC-Windows.zip
           Expand-Archive AutoC-Windows.zip -DestinationPath unzipped
-          $env:AUTOC_INSTALL_DIR = "$PWD\installed dir"
-          $env:AUTOC_NO_PAUSE = "1"
-          $env:AUTOC_NO_START = "1"
-          cmd /c "unzipped\Install.bat"
-          if ($LASTEXITCODE -ne 0) { throw "Install.bat failed" }
-          foreach ($f in 'AutoC.exe','autoc-cli.exe') { if (-not (Test-Path "$env:AUTOC_INSTALL_DIR\$f")) { throw "$f not installed" } }
+          Get-ChildItem unzipped | Format-Table Name
+      - name: Install.bat
+        shell: cmd
+        timeout-minutes: 3
+        run: |
+          set "AUTOC_INSTALL_DIR=%CD%\installed dir"
+          call unzipped\Install.bat
+          echo install exit code: %errorlevel%
+          if errorlevel 1 exit /b 1
+        env:
+          AUTOC_NO_PAUSE: "1"
+          AUTOC_NO_START: "1"
+          AUTOC_NO_GUI: "1"
+      - name: Check installed files, shortcut and installed exe
+        shell: pwsh
+        timeout-minutes: 3
+        env:
+          AUTOC_NO_GUI: "1"
+        run: |
+          $dir = "$PWD\installed dir"
+          foreach ($f in 'AutoC.exe','autoc-cli.exe') { if (-not (Test-Path "$dir\$f")) { throw "$f not installed" } }
           $lnk = Join-Path ([Environment]::GetFolderPath('Desktop')) 'AutoC.lnk'
           if (-not (Test-Path $lnk)) { throw "Desktop shortcut missing" }
           $target = (New-Object -ComObject WScript.Shell).CreateShortcut($lnk).TargetPath
           Write-Host "shortcut -> $target"
-          if ($target -ne "$env:AUTOC_INSTALL_DIR\AutoC.exe") { throw "wrong shortcut target" }
-          $out = & "$env:AUTOC_INSTALL_DIR\autoc-cli.exe" correct "teh end"
+          if ($target -ne "$dir\AutoC.exe") { throw "wrong shortcut target" }
+          $run = (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run').AutoC
+          Write-Host "autostart -> $run"
+          if (-not $run) { throw "autostart entry missing" }
+          $out = & "$dir\autoc-cli.exe" correct "teh end"
           if ($out -ne "The end") { throw "installed exe wrong output: $out" }
-          # start the background app like the shortcut does; it must keep running and not crash
-          $proc = Start-Process "$env:AUTOC_INSTALL_DIR\AutoC.exe" -PassThru
+      - name: Start installed AutoC.exe and keep it running 8s
+        shell: pwsh
+        timeout-minutes: 3
+        env:
+          AUTOC_NO_GUI: "1"
+        run: |
+          $proc = Start-Process "$PWD\installed dir\AutoC.exe" -PassThru
           Start-Sleep -Seconds 8
-          if ($proc.HasExited) { Write-Host (Get-Content "$env:APPDATA\AutoC\autoc.log" -ErrorAction SilentlyContinue); throw "AutoC.exe exited with $($proc.ExitCode)" }
+          $log = Join-Path $env:APPDATA 'AutoC\autoc.log'
+          if (Test-Path $log) { Write-Host "--- autoc.log"; Get-Content $log }
+          if ($proc.HasExited) { throw "AutoC.exe exited with $($proc.ExitCode)" }
           Write-Host "AutoC.exe is running (pid $($proc.Id))"
           Stop-Process $proc -Force
-          cmd /c "unzipped\Uninstall.bat"
-          if (Test-Path "$env:AUTOC_INSTALL_DIR\AutoC.exe") { throw "uninstall left files" }
+      - name: Uninstall.bat
+        shell: cmd
+        timeout-minutes: 3
+        run: |
+          set "AUTOC_INSTALL_DIR=%CD%\installed dir"
+          call unzipped\Uninstall.bat
+          if exist "%AUTOC_INSTALL_DIR%\AutoC.exe" (echo uninstall left files & exit /b 1)
+        env:
+          AUTOC_NO_PAUSE: "1"
+          AUTOC_NO_GUI: "1"
       - uses: actions/upload-artifact@v4
         with: { name: AutoC-Windows, path: AutoC-Windows.zip }
