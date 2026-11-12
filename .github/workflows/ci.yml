@@ -1,16 +1,64 @@
 name: CI
 on: [push, pull_request]
 jobs:
-  test-and-build:
+  windows:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
-      - run: pip install -e ".[dev]" pyinstaller
-      - run: python -m pytest -q
-      - run: python -m autoc correct "i dont know wich langauge, teh brwon fox. THe end"
-      - run: pyinstaller autoc.spec
-      - run: dist\AutoC.exe correct "teh quick brwon fox"
+      - run: pip install -e ".[dev]"
+      - name: Unit tests
+        run: python -m pytest -q
+      - name: Selftest from source (real keyboard hook + real typing)
+        run: python -m autoc selftest --e2e
+        continue-on-error: true
+      - name: Build
+        run: pyinstaller autoc.spec
+      - name: Packaged console exe corrects text (checks the real output)
+        shell: pwsh
+        run: |
+          $out = & .\dist\AutoC\autoc-cli.exe correct "i dont know wich langauge, teh brwon fox. THe end"
+          Write-Host $out
+          if ($LASTEXITCODE -ne 0 -or $out -ne "I don't know which language, the brown fox. The end") { throw "autoc-cli failed: exit=$LASTEXITCODE out=$out" }
+      - name: Packaged GUI exe writes a result (windowed exe, checks exit code and file)
+        shell: pwsh
+        run: |
+          $p = Start-Process .\dist\AutoC\AutoC.exe -ArgumentList 'correct','"teh quick brwon fox"','--out','gui.txt' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "AutoC.exe exit code $($p.ExitCode)" }
+          $t = (Get-Content gui.txt -Raw).Trim()
+          Write-Host $t
+          if ($t -ne "The quick brown fox") { throw "AutoC.exe wrong output: $t" }
+      - name: Packaged selftest (hook + SendInput)
+        run: .\dist\AutoC\autoc-cli.exe selftest
+      - name: Build ZIP, run Install.bat, check shortcut, start AutoC
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory pkg | Out-Null
+          Copy-Item dist\AutoC pkg\AutoC -Recurse
+          Copy-Item installer\* pkg\
+          Compress-Archive -Path pkg\* -DestinationPath AutoC-Windows.zip
+          Expand-Archive AutoC-Windows.zip -DestinationPath unzipped
+          $env:AUTOC_INSTALL_DIR = "$PWD\installed dir"
+          $env:AUTOC_NO_PAUSE = "1"
+          $env:AUTOC_NO_START = "1"
+          cmd /c "unzipped\Install.bat"
+          if ($LASTEXITCODE -ne 0) { throw "Install.bat failed" }
+          foreach ($f in 'AutoC.exe','autoc-cli.exe') { if (-not (Test-Path "$env:AUTOC_INSTALL_DIR\$f")) { throw "$f not installed" } }
+          $lnk = Join-Path ([Environment]::GetFolderPath('Desktop')) 'AutoC.lnk'
+          if (-not (Test-Path $lnk)) { throw "Desktop shortcut missing" }
+          $target = (New-Object -ComObject WScript.Shell).CreateShortcut($lnk).TargetPath
+          Write-Host "shortcut -> $target"
+          if ($target -ne "$env:AUTOC_INSTALL_DIR\AutoC.exe") { throw "wrong shortcut target" }
+          $out = & "$env:AUTOC_INSTALL_DIR\autoc-cli.exe" correct "teh end"
+          if ($out -ne "The end") { throw "installed exe wrong output: $out" }
+          # start the background app like the shortcut does; it must keep running and not crash
+          $proc = Start-Process "$env:AUTOC_INSTALL_DIR\AutoC.exe" -PassThru
+          Start-Sleep -Seconds 8
+          if ($proc.HasExited) { Write-Host (Get-Content "$env:APPDATA\AutoC\autoc.log" -ErrorAction SilentlyContinue); throw "AutoC.exe exited with $($proc.ExitCode)" }
+          Write-Host "AutoC.exe is running (pid $($proc.Id))"
+          Stop-Process $proc -Force
+          cmd /c "unzipped\Uninstall.bat"
+          if (Test-Path "$env:AUTOC_INSTALL_DIR\AutoC.exe") { throw "uninstall left files" }
       - uses: actions/upload-artifact@v4
-        with: { name: AutoC-windows, path: dist/AutoC.exe }
+        with: { name: AutoC-Windows, path: AutoC-Windows.zip }

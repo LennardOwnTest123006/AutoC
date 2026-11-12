@@ -112,6 +112,7 @@ class Win:
         u.CallNextHookEx.restype = LRESULT
         u.UnhookWindowsHookEx.argtypes = [wintypes.HHOOK]
         u.SendInput.argtypes = [wintypes.UINT, ctypes.c_void_p, ctypes.c_int]
+        u.GetKeyboardLayoutList.argtypes = [ctypes.c_int, ctypes.c_void_p]
         u.GetAsyncKeyState.argtypes = [ctypes.c_int]
         u.GetKeyState.argtypes = [ctypes.c_int]
         u.GetForegroundWindow.restype = wintypes.HWND
@@ -189,6 +190,7 @@ class KeyboardHook:
         self.engine, self.cfg, self.on_toggle = engine, config, on_toggle
         self.lock = threading.Lock()
         self.win = None
+        self.accept_injected = False   # tests only: treat SendInput keys as typing
         self.thread_id = None
         self._swallowed = set()
         self._fg = (None, "", False)   # hwnd, layout, excluded
@@ -230,7 +232,7 @@ class KeyboardHook:
 
     def _handle(self, wParam, kb) -> bool:
         """True = swallow this key event."""
-        if kb.flags & LLKHF_INJECTED or kb.dwExtraInfo == MAGIC:
+        if kb.dwExtraInfo == MAGIC or (kb.flags & LLKHF_INJECTED and not self.accept_injected):
             return False
         vk, up = kb.vkCode, wParam in (WM_KEYUP, WM_SYSKEYUP)
         if up:

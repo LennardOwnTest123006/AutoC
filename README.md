@@ -27,28 +27,37 @@ Urdu, Vietnamese) and you can add **any other language** with your own dictionar
 - Excluded apps (password managers, terminals ... editable)
 - 100 % offline. Nothing you type is stored, logged or sent anywhere.
 
-## Install
-Download `AutoC.exe` from the [Releases](../../releases) page (or the latest CI artifact) and run it.
-A tray icon appears (blue = on, grey = off). Right-click it for settings.
+## Install (Windows 10/11)
+1. Download **`AutoC-Windows.zip`** from the [latest release](../../releases/latest).
+2. Right-click it → **Extract All...**
+3. Double-click **`Install.bat`** (SmartScreen: *More info → Run anyway*).
 
-From source (Python 3.9+):
+That's it: AutoC is installed, starts with Windows, gets a **Desktop shortcut** and
+starts right away (blue icon near the clock). `Uninstall.bat` removes everything.
+
+Terminal (open a *new* one after installing):
+```
+autoc-cli correct "i dont know wich langauge"
+autoc-cli languages
+autoc-cli selftest
+```
+
+From source (needs Python 3.9+, run inside the cloned repository):
 ```
 pip install .
-autoc          # start in the background
-autoc settings # settings window
-autoc autostart on
+python -m autoc
 ```
 
 ## Try it without Windows
 ```
-autoc correct "i dont know wich langauge, teh brwon fox. THe end"
-autoc correct --lang de,en "das ist ein Hauss. ich gehe nach hause"
+autoc-cli correct "i dont know wich langauge, teh brwon fox. THe end"
+autoc-cli correct --lang de,en "das ist ein Hauss. ich gehe nach hause"
 ```
 
 ## Add any language
 Use *Settings → Languages → Add my own dictionary*, or:
 ```
-autoc dict-add xx my-wordlist.txt        # one word per line (optional TAB + count), or a Hunspell .dic
+autoc-cli dict-add xx my-wordlist.txt        # one word per line (optional TAB + count), or a Hunspell .dic
 ```
 Languages without spaces between words (Chinese, Japanese) are not spell-checked; every
 other cased script still gets capitalisation fixes.
@@ -74,7 +83,7 @@ replace / swap) of a known word, ranked by frequency. Word lists are built from
 pip install -e ".[dev]"
 pytest
 python tools/build_dictionaries.py    # rebuild word lists
-pyinstaller autoc.spec                # build dist/AutoC.exe (on Windows)
+pyinstaller autoc.spec                # build dist/AutoC/ (on Windows)
 ```
 
 MIT licensed. Contributions welcome.
