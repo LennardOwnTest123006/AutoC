@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "autoc"
+version = "0.1.0"
+description = "AutoC - open-source background autocorrect for Windows, in every language"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.9"
+dependencies = ["pystray>=0.19; sys_platform == 'win32'", "Pillow>=10; sys_platform == 'win32'"]
+
+[project.optional-dependencies]
+dev = ["pytest", "wordfreq", "pyinstaller"]
+
+[project.scripts]
+autoc = "autoc.cli:main"
+
+[project.gui-scripts]
+autoc-gui = "autoc.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["autoc*"]
+
+[tool.setuptools.package-data]
+autoc = ["data/dictionaries/*", "data/replacements/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["tests"]
